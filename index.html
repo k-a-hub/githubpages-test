@@ -1,7 +1,9 @@
 <!DOCTYPE html>
-<html>
+<html lang="ja">
 
 <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Create and Modify Excel File</title>
     <script src="https://code.jquery.com/jquery-3.4.1.min.js"></script>
 
@@ -16,37 +18,79 @@
             max-height: 200px;
             margin: 10px;
         }
+
+        #table-wrap {
+            overflow-x: scroll;
+            overflow-y: scroll;
+            max-height: 750px;
+            margin-bottom: 10px;
+        }
+
+        .header-form {
+            margin-bottom: 10px;
+        }
+
+        .header-form label {
+            display: block;
+        }
+
+        .header-form input {
+            display: block;
+            width: 100%;
+            box-sizing: border-box;
+            padding: 5px;
+        }
+
+        #sheet-tab-wrap {
+            overflow: hidden;
+            border: 1px solid #ccc;
+            background-color: #f1f1f1;
+        }
+
+        #sheet-tab-wrap button {
+            background-color: inherit;
+            float: left;
+            border: none;
+            outline: none;
+            cursor: pointer;
+            padding: 14px 16px;
+            transition: background-color 0.3s;
+        }
+
+        /* タブのボタンのアクティブ状態 */
+        #sheet-tab-wrap button.active {
+            background-color: #ccc;
+        }
     </style>
 </head>
 
 <body>
-    <table id="my-table" border="1" style="visibility: hidden;"></table>
+    <div>
+        <div class="header-form">
+            <label for="exam-specification-name-input">試験仕様書名</label>
+            <input id="exam-specification-name-input" type="text" />
+        </div>
+        <div id="header-sheet-wrap"></div>
+    </div>
+    <div id="table-wrap"></div>
+    <div id="sheet-tab-wrap"></div>
     <hr>
     <button id="attachment-evidencefile-btn">エビデンスファイル添付</button>
-    <button onclick="createAndModifyExcel()">テーブルの内容をExcel化</button>
-    <p>
-        TODO: <button id="excel-dl">テンプレートエクセルDL</button>
-    </p>
+    <button id="dl-excel" disabled>テーブルの内容をExcel化</button>
     <script>
-        // エビデンス添付テーブル
-        let myTable = $('#my-table');
-        // let myTableBody = null;
-        let myTableBody = $('#my-table tbody');
-        // エビデンスファイル格納配列
-        let evidenceFiles = [];
-        // Excelファイル作成処理
-        let workbook = null;
-        createExcel().then(loadExcel);
-        function loadExcel(blob) {
-            const reader = new FileReader();
-            reader.onload = onLoadReader;
-            reader.readAsArrayBuffer(blob);
-        }
+        $(window).on("beforeunload", function () {
+            return "リロード禁止です！";
+        });
 
-        async function onLoadReader(e) {
-            workbook = new ExcelJS.Workbook();
-            await workbook.xlsx.load(e.target.result);
-        }
+        // 各シートのヘッダー要素
+        let headerSheetTabDiv = $('#header-sheet-wrap');
+        // エビデンス添付テーブル
+        let tableWrap = $('#table-wrap');
+        // シートタブ用
+        let sheetTabDiv = $('#sheet-tab-wrap');
+
+        // Excelファイル作成と読み込み
+        let workbook = null;
 
         // エビデンスファイル添付処理
         $('#attachment-evidencefile-btn').on('click', async (event) => {
@@ -54,12 +98,9 @@
             btn.prop('disabled', true);
             try {
                 const directoryHandle = await window.showDirectoryPicker();
-                myTable.css('visibility', 'visible');
-                myTable.append($('<tbody>'));
-                myTableBody = $('#my-table tbody');
-
                 const structure = await readDirectory(directoryHandle);
                 createMyTable(structure);
+                $('#dl-excel').attr('disabled', false);
             } catch (error) {
                 console.log('Error opening directory:', error);
             } finally {
@@ -83,9 +124,8 @@
 
             const directoryStructure = [];
             for (const [name, handle] of entries) {
-                // console.log({ name }, { handle });
                 if (handle.kind === 'file') {
-                    // console.log("file処理");
+                    // ファイル処理
                     const file = await handle.getFile();
                     imgBase64 = await fileToBase64(file);
                     directoryStructure.push({
@@ -97,7 +137,7 @@
                 }
 
                 if (handle.kind === 'directory') {
-                    // console.log("directory処理");
+                    // ディレクトリ処理
                     const subDirectoryStructure = await readDirectory(handle, `${path}${name}/`);
                     directoryStructure.push({
                         name: name,
@@ -121,9 +161,22 @@
         }
 
         function createMyTable(structure) {
-            structure.forEach(element => {
+
+            // 既にテーブル要素が存在する場合削除
+            headerSheetTabDiv.empty();
+            tableWrap.empty();
+            sheetTabDiv.empty();
+
+            structure.forEach((element, index) => {
                 // シートの繰り返し
                 if (element.children) {
+                    let tableId = `sheet-${index + 1}`;
+                    const table = $('<table>', { border: 1, id: tableId });
+                    if (index != 0) {
+                        table.hide();
+                    }
+                    const tableBody = $('<tbody>');
+
                     element.children.forEach(element1 => {
                         // 各試験項目の繰り返し
                         if (element1.children) {
@@ -158,113 +211,265 @@
                                 imgTrTag.append(imgTdTag);
 
                             });
-                            myTableBody.append(inputTrTag);
-                            myTableBody.append(imgTrTag);
+                            tableBody.append(inputTrTag);
+                            tableBody.append(imgTrTag);
                         }
                     });
+
+                    table.append(tableBody);
+                    tableWrap.append(table);
+                    tableWrap.css('height', '750px');
+                    createSheetTab(element.name, index);
                 }
             });
         }
 
-        // Excelファイル書き込みと保存処理
-        async function createAndModifyExcel() {
+        function createSheetTab(sheetName, index) {
+            let id = index + 1;
+            // ヘッダーシートタブ生成
+            let headerSheet = $('<div>');
+            headerSheet.attr('id', `header-sheet-${id}`);
+            if (index != 0) {
+                headerSheet.hide();
+            }
 
-            // 作業シート
-            worksheet = workbook.getWorksheet(1);
+            function createInputField(labelText, inputId) {
+                return $('<div>', { class: 'header-form' })
+                    .append($('<label>', { for: inputId, text: labelText }))
+                    .append($('<input>', { type: 'text', id: inputId }));
+            }
+            // 実施日時
+            headerSheet.append(createInputField('実施日時', `implementation-date-input-${id}`));
+            // OSバージョン
+            headerSheet.append(createInputField('OSバージョン', `os-input-${id}`));
+            // その他
+            headerSheet.append(createInputField('その他', `others-input-${id}`));
+            headerSheetTabDiv.append(headerSheet);
 
-            let insertRow = myTableBody.children().length / 2 - 1;
-            let insertCol = Math.max(...myTable.find('tr').map((index, elem) => {
-                return $(elem).children('td').length;
-            }).get()) - 1;
-            copyColumnWithStyle(worksheet, 'G', 'H', 1, 6, insertCol);
-            copyRowWithStyle(worksheet, insertCol, insertRow);
+            // シートタブ生成
+            let sheetBtn = $('<button>', { 'data-sheet': `sheet-${index + 1}` });
+            sheetBtn.text(sheetName);
+            // 最初のシートをアクティブに
+            if (index == 0) {
+                sheetBtn.attr('class', 'active');
+            }
+            sheetTabDiv.append(sheetBtn);
+        }
 
-            // A列の開始行
-            let aColStartRow = 6;
-            // 入力行
-            let inputStartRow = 5;
-            // 画像行列
-            let imageStartRow = 4;
-            let imageStartCol = 1;
-
-            myTableBody.children().each((i, e) => {
-                // trの繰り返し
-                $(e).children().each(async (j, e1) => {
-                    // tdの繰り返し
-                    if (i % 2 == 0 && j == 0) {
-                        // 何も記入していない行のため処理しない
+        $('#sheet-tab-wrap').on('click', 'button', function () {
+            const sheetName = $(this).data('sheet');
+            $('#sheet-tab-wrap button').removeClass('active');
+            $(this).addClass('active');
+            // TODO: 切り替え処理
+            headerSheetTabDiv.each((index, elem) => {
+                $(elem).children().each((index2, elem2) => {
+                    if ($(elem2).attr('id').replace('header-', '') == sheetName) {
+                        $(elem2).show();
                         return;
                     }
-
-                    if (j == 0) {
-                        // A列の記入内容
-                        let cell = worksheet.getCell(`A${aColStartRow}`);
-                        cell.value = $(e1).text();
-                        aColStartRow += 2;
-                        return;
-                    }
-
-                    if (i % 2 == 0) {
-                        // 記入行
-                        let inputTableCell = $(e1);
-                        let cell = worksheet.getCell(`${numberToExcelColumn(j + 1)}${inputStartRow}`);
-                        cell.value = $(inputTableCell.children()[0]).val();
-                        return;
-                    }
-
-                    // 画像行
-                    let imageTableCell = $(e1);
-                    let imageTag = $(imageTableCell.children()[0]);
-
-                    let sheetImg = workbook.addImage({
-                        base64: imageTag.attr('src'),
-                        extension: 'png'
-                    });
-
-                    // let img = await loadImage(imageTag.attr('src'));
-                    worksheet.addImage(sheetImg, {
-                        tl: { col: Number(imageStartCol + 0.2), row: Number(imageStartRow + 0.5)},
-                        // TODO: セルのサイズと画像のサイズをうまく合わせる
-                        // アスペクト比がズレるので細かい調節が必要
-                        // セル一杯になるようにしたサイズ
-                        ext: { width: 245, height: 520},
-                        editAs: 'oneCell'
-                    });
-                    imageStartCol++;
+                    $(elem2).hide();
+                    return;
                 });
-                
-                inputStartRow++;
-                imageStartRow++;
-                imageStartCol = 1;
             });
 
-            const modifiedBuffer = await workbook.xlsx.writeBuffer({
-                // base64: true
+            tableWrap.each((index, elem) => {
+                $(elem).children().each((index2, elem2) => {
+                    if ($(elem2).attr('id') == sheetName) {
+                        $(elem2).show();
+                        return;
+                    }
+                    $(elem2).hide();
+                    return;
+                });
             });
-            // console.log(modifiedBuffer);
-            const blob = new Blob([modifiedBuffer.buffer], { type: 'application/octet-stream' });
-            saveAs(blob, 'example.xlsx');
+        });
+
+        async function loadExcel(blob) {
+            const arraBuffer = await blobToArrayBuffer(blob);
+            workbook = new ExcelJS.Workbook();
+            await workbook.xlsx.load(arraBuffer);
         }
 
-        function loadImage(src) {
+        function blobToArrayBuffer(blob) {
             return new Promise((resolve, reject) => {
-                const img = new Image();
-                img.src = src;
-                console.log("loadImage");
-                img.onload = () => resolve(img);
-                img.onerror = () => reject(new Error("erro load image"));
+                const reader = new FileReader();
+                reader.onload = () => resolve(reader.result);
+                reader.onerror = () => reject(reader.error);
+                reader.readAsArrayBuffer(blob);
             });
         }
 
-        // テンプレートエクセル作成確認
+        // Excelファイル書き込みと保存処理
+        $('#dl-excel').on('click', async (event) => {
+            const btn = $(event.currentTarget);
+            btn.prop('disabled', true);
+            try {
+                // テンプレートエクセルファイル作成
+                const excelBlob = await createExcel();
+                await loadExcel(excelBlob);
+
+                // 必要シート数
+                const sheetNum = sheetTabDiv.children().length;
+                const sheetNameArray = sheetTabDiv.children().map((index, elem) => $(elem).text()).get();
+                // シートのコピー
+                copySheet(sheetNum, sheetNameArray);
+                // テンプレートシート削除
+                const delTempSheet = workbook.getWorksheet('OS1');
+                workbook.removeWorksheet(delTempSheet.id);
+                // ヘッダー要素
+                // 試験仕様書名
+                const examSpecName = $('#exam-specification-name-input').val();
+                // 各シートの実施日時、OSバージョン、その他
+                const implementationDateInput = 'implementation-date-input-';
+                const osInput = 'os-input-';
+                const othersInput = 'others-input-';
+                // テーブルタブの繰り返し
+                sheetTabDiv.children().each((index, elem) => {
+
+                    // 作業シート
+                    worksheet = workbook.getWorksheet($(elem).text());
+                    // 試験仕様書名の入力
+                    worksheet.getCell('C1').value = examSpecName;
+                    // 各シートの要素を抽出するID
+                    let dataId = $(elem).data('sheet');
+                    // ヘッダー要素の設定
+                    let headerForm = $(`#header-${dataId}`);
+                    let headerIndex = index + 1;
+                    worksheet.getCell('F1').value = headerForm.find('input').filter(`#${implementationDateInput}${headerIndex}`).val();
+                    worksheet.getCell('A2').value = headerForm.find('input').filter(`#${osInput}${headerIndex}`).val();
+                    worksheet.getCell('C2').value = headerForm.find('input').filter(`#${othersInput}${headerIndex}`).val();
+
+                    // テーブル要素
+                    let table = $(`#${dataId}`);
+                    let tableBody = $($(`#${dataId}`).children()[0]);
+                    let insertRow = tableBody.children().length / 2 - 1;
+                    let insertCol = Math.max(...table.find('tr').map((index, e) => {
+                        return $(e).children('td').length;
+                    }).get()) - 1;
+                    copyColumnWithStyle(worksheet, 'G', 'H', 1, 6, insertCol);
+                    copyRowWithStyle(worksheet, insertCol, insertRow);
+
+                    // A列の開始行
+                    let aColStartRow = 6;
+                    // 入力行
+                    let inputStartRow = 5;
+                    // 画像行列
+                    let imageStartRow = 4;
+                    let imageStartCol = 1;
+
+                    tableBody.children().each((i, e) => {
+                        // trの繰り返し
+
+                        $(e).children().each((j, e1) => {
+                            // tdの繰り返し
+
+                            if (i % 2 == 0 && j == 0) {
+                                // 何も記入しない行のため処理しない
+                                return;
+                            }
+
+                            if (j == 0) {
+                                // A列の記入内容
+                                let cell = worksheet.getCell(`A${aColStartRow}`);
+                                cell.value = $(e1).text();
+                                aColStartRow += 2;
+                                return;
+                            }
+
+                            if (i % 2 == 0) {
+                                // 記入行
+                                let inputTableCell = $(e1);
+                                let cell = worksheet.getCell(`${numberToExcelColumn(j + 1)}${inputStartRow}`);
+                                cell.value = $(inputTableCell.children()[0]).val();
+                                return;
+                            }
+
+                            // 画像行
+                            let imageTableCell = $(e1);
+                            let imageTag = $(imageTableCell.children()[0]);
+
+                            let sheetImg = workbook.addImage({
+                                base64: imageTag.attr('src'),
+                                extension: 'png'
+                            });
+
+                            worksheet.addImage(sheetImg, {
+                                tl: { col: Number(imageStartCol + 0.2), row: Number(imageStartRow + 0.5) },
+                                // TODO: セルのサイズと画像のサイズをうまく合わせる
+                                // アスペクト比がズレるので細かい調節が必要
+                                // セル一杯になるようにしたサイズ
+                                ext: { width: 245, height: 520 },
+                                editAs: 'oneCell'
+                            });
+                            imageStartCol++;
+                        });
+
+                        inputStartRow++;
+                        imageStartRow++;
+                        imageStartCol = 1;
+                    });
+                });
+
+                const modifiedBuffer = await workbook.xlsx.writeBuffer({
+                    // base64: true
+                });
+                const blob = new Blob([modifiedBuffer.buffer], { type: 'application/octet-stream' });
+                saveAs(blob, 'example.xlsx');
+            } catch (error) {
+                console.error(error);
+            } finally {
+                btn.prop('disabled', false);
+                return;
+            }
+        });
+
+        function copySheet(copyNum, sheetNameArray) {
+            copyNum = [...Array(copyNum).keys()];
+            copyNum.forEach((elem, i) => {
+                const originalSheet = workbook.getWorksheet('OS1');
+                const copiedSheet = workbook.addWorksheet(`${sheetNameArray[i]}`);
+
+                originalSheet.eachRow({ includeEmpty: true }, (row, rowNumber) => {
+                    const newRow = copiedSheet.getRow(rowNumber);
+                    row.eachCell({ includeEmpty: true }, (cell, colNumber) => {
+                        const newCell = newRow.getCell(colNumber);
+                        newCell.value = cell.value;
+                        newCell.style = { ...cell.style };
+                        if (cell.type === ExcelJS.ValueType.RichText) {
+                            newCell.value = { richText: cell.value.richText.map(part => ({ ...part })) };
+                        }
+                        if (cell.isMerged && cell.address === cell.master.address) {
+                            const startColAlpha = cell.address.substring(0, 1);
+                            const startColNum = cell.address.substring(2, 1);
+                            let endColAlpha = excelColumnToNumber(startColAlpha) + cell._mergeCount;
+                            endColAlpha = numberToExcelColumn(endColAlpha);
+                            copiedSheet.mergeCells(`${startColAlpha}${startColNum}:${endColAlpha}${startColNum}`);
+                        }
+                    });
+                });
+
+                originalSheet.columns.forEach((col, index) => {
+                    const newCol = copiedSheet.getColumn(index + 1);
+                    newCol.width = col.width;
+                    newCol.style = { ...col.style };
+                });
+
+                originalSheet.eachRow({ includeEmpty: true }, (row, rowNumber) => {
+                    const newRow = copiedSheet.getRow(rowNumber);
+                    // newRow.height = Number(heightArray[rowNumber - 1]) * 0.75;
+                    newRow.height = row.height * 0.75;
+                });
+            });
+        }
+
+        // TODO: テンプレートエクセル作成確認
         $('#excel-dl').on('click', async (event) => {
             // TODO: 列と行をコピーしてみる
             let worksheet = workbook.worksheets[0];
 
-            let colNum = 50;
+            let colNum = 0;
             copyColumnWithStyle(worksheet, 'G', 'H', 1, 6, colNum);
-            // console.log(excelColumnToNumber("BF"));
-            let rowNum = 20;
+            let rowNum = 0;
             copyRowWithStyle(worksheet, colNum, rowNum);
 
             const excelBuffer = await workbook.xlsx.writeBuffer();
