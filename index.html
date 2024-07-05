@@ -5,6 +5,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Create and Modify Excel File</title>
+    <link rel="stylesheet" href="./css/index.css">
     <script src="https://code.jquery.com/jquery-3.4.1.min.js"></script>
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.3.0/exceljs.min.js"></script>
@@ -12,56 +13,6 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
     <script src="https://stuk.github.io/jszip/dist/jszip.min.js"></script>
     <script src="./js/CreateExcel.js"></script>
-    <style>
-        img {
-            max-width: 200px;
-            max-height: 200px;
-            margin: 10px;
-        }
-
-        #table-wrap {
-            overflow-x: scroll;
-            overflow-y: scroll;
-            max-height: 750px;
-            margin-bottom: 10px;
-        }
-
-        .header-form {
-            margin-bottom: 10px;
-        }
-
-        .header-form label {
-            display: block;
-        }
-
-        .header-form input {
-            display: block;
-            width: 100%;
-            box-sizing: border-box;
-            padding: 5px;
-        }
-
-        #sheet-tab-wrap {
-            overflow: hidden;
-            border: 1px solid #ccc;
-            background-color: #f1f1f1;
-        }
-
-        #sheet-tab-wrap button {
-            background-color: inherit;
-            float: left;
-            border: none;
-            outline: none;
-            cursor: pointer;
-            padding: 14px 16px;
-            transition: background-color 0.3s;
-        }
-
-        /* タブのボタンのアクティブ状態 */
-        #sheet-tab-wrap button.active {
-            background-color: #ccc;
-        }
-    </style>
 </head>
 
 <body>
@@ -77,232 +28,45 @@
     <hr>
     <button id="attachment-evidencefile-btn">エビデンスファイル添付</button>
     <button id="dl-excel" disabled>テーブルの内容をExcel化</button>
+    <!-- <p>
+        TODO: <button id="excel-dl">テンプレートエクセルDL</button>
+    </p> -->
     <script>
         $(window).on("beforeunload", function () {
             return "リロード禁止です！";
         });
+    </script>
+    <script src="./js/functions.js"></script>
+    <script src="./js/main.js"></script>
+    <script>
 
-        // 各シートのヘッダー要素
-        let headerSheetTabDiv = $('#header-sheet-wrap');
-        // エビデンス添付テーブル
-        let tableWrap = $('#table-wrap');
-        // シートタブ用
-        let sheetTabDiv = $('#sheet-tab-wrap');
-
-        // Excelファイル作成と読み込み
-        let workbook = null;
-
-        // エビデンスファイル添付処理
-        $('#attachment-evidencefile-btn').on('click', async (event) => {
-            const btn = $(event.currentTarget);
-            btn.prop('disabled', true);
-            try {
-                const directoryHandle = await window.showDirectoryPicker();
-                const structure = await readDirectory(directoryHandle);
-                createMyTable(structure);
-                $('#dl-excel').attr('disabled', false);
-            } catch (error) {
-                console.log('Error opening directory:', error);
-            } finally {
-                btn.prop('disabled', false);
-            }
-        });
-
-        async function readDirectory(directoryHandle, path = '') {
-            // 選択したディレクトリ内のフォルダ/ファイルをソート
-            const entries = [];
-            for await (const [name, handle] of directoryHandle.entries()) {
-                if (name.startsWith('.')) {
-                    // 先頭が「.」で始まるファイルは飛ばす
-                    continue;
-                }
-                entries.push([name, handle]);
-            }
-
-            // フォルダ/ファイル名で昇順ソート
-            entries.sort((a, b) => a[0].localeCompare(b[0]));
-
-            const directoryStructure = [];
-            for (const [name, handle] of entries) {
-                if (handle.kind === 'file') {
-                    // ファイル処理
-                    const file = await handle.getFile();
-                    imgBase64 = await fileToBase64(file);
-                    directoryStructure.push({
-                        name: name,
-                        type: 'file',
-                        img_base64: imgBase64
-                    });
-                    continue;
-                }
-
-                if (handle.kind === 'directory') {
-                    // ディレクトリ処理
-                    const subDirectoryStructure = await readDirectory(handle, `${path}${name}/`);
-                    directoryStructure.push({
-                        name: name,
-                        type: 'directory',
-                        children: subDirectoryStructure
-                    });
-                    continue;
-                }
-            }
-            return directoryStructure;
-        }
-
-        // 画像ファイルをbase64に変換
-        function fileToBase64(file) {
-            return new Promise((resolve, reject) => {
-                const reader = new FileReader();
-                reader.onload = () => resolve(reader.result);
-                reader.onerror = (error) => reject(error);
-                reader.readAsDataURL(file);
-            });
-        }
-
-        function createMyTable(structure) {
-
-            // 既にテーブル要素が存在する場合削除
-            headerSheetTabDiv.empty();
-            tableWrap.empty();
-            sheetTabDiv.empty();
-
-            structure.forEach((element, index) => {
-                // シートの繰り返し
-                if (element.children) {
-                    let tableId = `sheet-${index + 1}`;
-                    const table = $('<table>', { border: 1, id: tableId });
-                    if (index != 0) {
-                        table.hide();
-                    }
-                    const tableBody = $('<tbody>');
-
-                    element.children.forEach(element1 => {
-                        // 各試験項目の繰り返し
-                        if (element1.children) {
-                            let inputTrTag = $('<tr>');
-                            let imgTrTag = $('<tr>');
-                            element1.children.forEach((element2, index2) => {
-                                if (index2 == 0) {
-                                    // テーブルの体裁を整えるために必要
-                                    // ダミー記入行
-                                    let inputTdTag = $('<td>');
-                                    inputTrTag.append(inputTdTag);
-
-                                    // 試験項目入力
-                                    let imgTdTag = $('<td>');
-                                    imgTdTag.text(element1.name);
-                                    imgTrTag.append(imgTdTag);
-                                }
-
-                                // 記入行
-                                let inputTag = $('<input>');
-                                inputTag.attr('type', 'text');
-                                inputTag.attr('value', '');
-                                let inputTdTag = $('<td>');
-                                inputTdTag.append(inputTag);
-                                inputTrTag.append(inputTdTag);
-
-                                // 画像ファイルの繰り返し
-                                let imgTag = $('<img>');
-                                imgTag.attr('src', element2.img_base64);
-                                let imgTdTag = $('<td>');
-                                imgTdTag.append(imgTag);
-                                imgTrTag.append(imgTdTag);
-
-                            });
-                            tableBody.append(inputTrTag);
-                            tableBody.append(imgTrTag);
-                        }
-                    });
-
-                    table.append(tableBody);
-                    tableWrap.append(table);
-                    tableWrap.css('height', '750px');
-                    createSheetTab(element.name, index);
-                }
-            });
-        }
-
-        function createSheetTab(sheetName, index) {
-            let id = index + 1;
-            // ヘッダーシートタブ生成
-            let headerSheet = $('<div>');
-            headerSheet.attr('id', `header-sheet-${id}`);
-            if (index != 0) {
-                headerSheet.hide();
-            }
-
-            function createInputField(labelText, inputId) {
-                return $('<div>', { class: 'header-form' })
-                    .append($('<label>', { for: inputId, text: labelText }))
-                    .append($('<input>', { type: 'text', id: inputId }));
-            }
-            // 実施日時
-            headerSheet.append(createInputField('実施日時', `implementation-date-input-${id}`));
-            // OSバージョン
-            headerSheet.append(createInputField('OSバージョン', `os-input-${id}`));
-            // その他
-            headerSheet.append(createInputField('その他', `others-input-${id}`));
-            headerSheetTabDiv.append(headerSheet);
-
-            // シートタブ生成
-            let sheetBtn = $('<button>', { 'data-sheet': `sheet-${index + 1}` });
-            sheetBtn.text(sheetName);
-            // 最初のシートをアクティブに
-            if (index == 0) {
-                sheetBtn.attr('class', 'active');
-            }
-            sheetTabDiv.append(sheetBtn);
-        }
-
+    </script>
+    <script>
+        // シートタブ押下時の切り替え処理
         $('#sheet-tab-wrap').on('click', 'button', function () {
             const sheetName = $(this).data('sheet');
             $('#sheet-tab-wrap button').removeClass('active');
             $(this).addClass('active');
-            // TODO: 切り替え処理
-            headerSheetTabDiv.each((index, elem) => {
-                $(elem).children().each((index2, elem2) => {
-                    if ($(elem2).attr('id').replace('header-', '') == sheetName) {
-                        $(elem2).show();
-                        return;
-                    }
-                    $(elem2).hide();
-                    return;
-                });
+
+            // ヘッダー要素の表示・非表示
+            headerSheetTabDiv.children().each((index, elem) => {
+                $(elem).toggle($(elem).attr('id').replace('header-', '') === sheetName);
             });
 
-            tableWrap.each((index, elem) => {
-                $(elem).children().each((index2, elem2) => {
-                    if ($(elem2).attr('id') == sheetName) {
-                        $(elem2).show();
-                        return;
-                    }
-                    $(elem2).hide();
-                    return;
-                });
+            // テーブル要素の表示・非表示
+            tableWrap.children().each((index, elem) => {
+                $(elem).toggle($(elem).attr('id') === sheetName);
             });
         });
-
-        async function loadExcel(blob) {
-            const arraBuffer = await blobToArrayBuffer(blob);
-            workbook = new ExcelJS.Workbook();
-            await workbook.xlsx.load(arraBuffer);
-        }
-
-        function blobToArrayBuffer(blob) {
-            return new Promise((resolve, reject) => {
-                const reader = new FileReader();
-                reader.onload = () => resolve(reader.result);
-                reader.onerror = () => reject(reader.error);
-                reader.readAsArrayBuffer(blob);
-            });
-        }
 
         // Excelファイル書き込みと保存処理
         $('#dl-excel').on('click', async (event) => {
             const btn = $(event.currentTarget);
             btn.prop('disabled', true);
+
+            // ロード中インジケータとオーバーレイ表示
+            loader.show();
+            overlay.show();
             try {
                 // テンプレートエクセルファイル作成
                 const excelBlob = await createExcel();
@@ -384,6 +148,7 @@
                                 return;
                             }
 
+                            // TODO: 可能なら、画像に枠線を付ける. 実践0.75ptで黒色
                             // 画像行
                             let imageTableCell = $(e1);
                             let imageTag = $(imageTableCell.children()[0]);
@@ -419,16 +184,20 @@
                 console.error(error);
             } finally {
                 btn.prop('disabled', false);
-                return;
+                // ロード中インジケータとオーバーレイ非表示
+                loader.hide();
+                overlay.hide();
             }
         });
 
         function copySheet(copyNum, sheetNameArray) {
             copyNum = [...Array(copyNum).keys()];
             copyNum.forEach((elem, i) => {
+                // テンプレートシート読み込み
                 const originalSheet = workbook.getWorksheet('OS1');
                 const copiedSheet = workbook.addWorksheet(`${sheetNameArray[i]}`);
 
+                // テンプレートシートの全セルのスタイルの設定
                 originalSheet.eachRow({ includeEmpty: true }, (row, rowNumber) => {
                     const newRow = copiedSheet.getRow(rowNumber);
                     row.eachCell({ includeEmpty: true }, (cell, colNumber) => {
@@ -448,34 +217,28 @@
                     });
                 });
 
+                // 列の横幅とスタイルの設定
                 originalSheet.columns.forEach((col, index) => {
                     const newCol = copiedSheet.getColumn(index + 1);
                     newCol.width = col.width;
                     newCol.style = { ...col.style };
                 });
 
+                // 行の高さの設定
                 originalSheet.eachRow({ includeEmpty: true }, (row, rowNumber) => {
                     const newRow = copiedSheet.getRow(rowNumber);
-                    // newRow.height = Number(heightArray[rowNumber - 1]) * 0.75;
-                    newRow.height = row.height * 0.75;
+                    // newRow.height = row.height * 0.75;
+                    newRow.height = row.height;
                 });
+                // シートのウィンドウ固定の設定
+                const sheetViews = originalSheet.views;
+                if (sheetViews.length != 0) {
+                    const freezePane = sheetViews[0];
+                    // console.log(freezePane);
+                    copiedSheet.views[0] = freezePane;
+                }
             });
         }
-
-        // TODO: テンプレートエクセル作成確認
-        $('#excel-dl').on('click', async (event) => {
-            // TODO: 列と行をコピーしてみる
-            let worksheet = workbook.worksheets[0];
-
-            let colNum = 0;
-            copyColumnWithStyle(worksheet, 'G', 'H', 1, 6, colNum);
-            let rowNum = 0;
-            copyRowWithStyle(worksheet, colNum, rowNum);
-
-            const excelBuffer = await workbook.xlsx.writeBuffer();
-            const blob = new Blob([excelBuffer.buffer], { type: 'application/octet-stream' });
-            saveAs(blob, 'template_excel.xlsx');
-        });
 
         function copyColumnWithStyle(worksheet, srcColumnAlpha, startColumnAlpha, startRowNum, endRowNum, destEndColNum) {
 
@@ -533,17 +296,27 @@
             });
         }
 
-        const ALPHABET_COUNT = 26;
+        // TODO: テンプレートエクセル作成確認
+        $('#excel-dl').on('click', async (event) => {
+            // テンプレートエクセルファイル作成
+            const excelBlob = await createExcel();
+            await loadExcel(excelBlob);
 
-        function excelColumnToNumber(c) {
-            return [...c].reduce((n, ch) => {
-                return n * ALPHABET_COUNT + ch.charCodeAt(0) - 'A'.charCodeAt(0) + 1;
-            }, 0);
-        }
+            // シートのコピー
+            copySheet(2, ['1_シート', '2_シート']);
 
-        function numberToExcelColumn(n) {
-            return n <= 0 ? '' : numberToExcelColumn(Math.floor((n - 1) / ALPHABET_COUNT)) + String.fromCharCode((n - 1) % ALPHABET_COUNT + 'A'.charCodeAt(0));
-        }
+            // TODO: 列と行をコピーしてみる
+            let worksheet = workbook.worksheets[0];
+
+            let colNum = 0;
+            copyColumnWithStyle(worksheet, 'G', 'H', 1, 6, colNum);
+            let rowNum = 0;
+            copyRowWithStyle(worksheet, colNum, rowNum);
+
+            const excelBuffer = await workbook.xlsx.writeBuffer();
+            const blob = new Blob([excelBuffer.buffer], { type: 'application/octet-stream' });
+            saveAs(blob, 'template_excel.xlsx');
+        });
     </script>
 </body>
 

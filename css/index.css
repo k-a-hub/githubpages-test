@@ -1,0 +1,105 @@
+img {
+    max-width: 200px;
+    max-height: 200px;
+    margin: 10px;
+}
+
+#table-wrap {
+    overflow-x: scroll;
+    overflow-y: scroll;
+    max-height: 750px;
+    margin-bottom: 10px;
+}
+
+table td {
+    padding: 0;
+}
+
+table td:first-child {
+    width: 140px;
+}
+
+table td:not(:first-child) {
+    width: 200px;
+}
+
+.header-form {
+    margin-bottom: 10px;
+}
+
+.header-form label {
+    display: block;
+}
+
+.header-form input {
+    display: block;
+    width: 100%;
+    box-sizing: border-box;
+    padding: 5px;
+}
+
+#sheet-tab-wrap {
+    overflow: hidden;
+    border: 1px solid #ccc;
+    background-color: #f1f1f1;
+    display: none;
+}
+
+#sheet-tab-wrap button {
+    background-color: inherit;
+    float: left;
+    border: none;
+    outline: none;
+    cursor: pointer;
+    padding: 14px 16px;
+    transition: background-color 0.3s;
+}
+
+/* タブのボタンのアクティブ状態 */
+#sheet-tab-wrap button.active {
+    background-color: #ccc;
+}
+
+/* 処理中のロード表示 */
+.loader,
+.overlay {
+    /* 最初は非表示にする */
+    display: none;
+}
+
+.loader {
+    border: 16px solid #f3f3f3;
+    border-radius: 50%;
+    border-top: 16px solid #3498db;
+    width: 120px;
+    height: 120px;
+    animation: spin 2s linear infinite;
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    /* オーバーレイの上に表示するため */
+    z-index: 1001;
+}
+
+.overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    /* 半透明の黒 */
+    background-color: rgba(0, 0, 0, 0.5);
+    /* ローダーの下に表示するため */
+    z-index: 1000;
+}
+
+@keyframes spin {
+    0% {
+        transform: rotate(0deg);
+    }
+
+    100% {
+        transform: rotate(360deg);
+    }
+}
